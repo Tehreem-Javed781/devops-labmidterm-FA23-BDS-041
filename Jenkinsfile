@@ -3,10 +3,10 @@ pipeline {
 
     environment {
         STUDENT_ID  = 'FA23-BDS-041'
-        IMAGE       = 'midterm-fa23-bds-041'
+        IMAGE       = 'tehreemtj/midterm-fa23-bds-041'   // Docker Hub repo
         CONTAINER   = 'midterm-app'
         NOTIFY_TO   = 'qasimalik@gmail.com'
-        NOTIFY_FROM = 'tjtehreem65@gmail.com'   // <-- the Gmail you put in the Google Form
+        NOTIFY_FROM = 'tjtehreem65@gmail.com'
     }
 
     triggers {
@@ -77,6 +77,18 @@ pipeline {
                     echo
                     docker image prune -f
                 '''
+            }
+        }
+
+        stage('Push to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
+                    sh '''
+                        echo "$DH_PASS" | docker login -u "$DH_USER" --password-stdin
+                        docker push $IMAGE:$BUILD_NUMBER
+                        docker push $IMAGE:latest
+                    '''
+                }
             }
         }
     }
