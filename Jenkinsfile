@@ -6,7 +6,8 @@ pipeline {
         IMAGE       = 'tehreemtj/midterm-fa23-bds-041'   // Docker Hub repo
         CONTAINER   = 'midterm-app'
         NOTIFY_TO   = 'qasimalik@gmail.com'
-        NOTIFY_FROM = 'tjtehreem65@gmail.com'
+        NOTIFY_FROM = 'tjtehreem65@gmail.com'   // <-- the Gmail you put in the Google Form
+        MY_EMAIL    = 'tjtehreem65@gmail.com'   // <-- the email my own git commits use (git config user.email)
     }
 
     triggers {
@@ -22,11 +23,14 @@ pipeline {
         stage('Fetch Latest Data') {
             steps {
                 script {
-                    env.GIT_SHA = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.GIT_SHA         = sh(script: 'git rev-parse HEAD', returnStdout: true).trim()
+                    env.COMMITTER_NAME  = sh(script: 'git log -1 --pretty=format:%an', returnStdout: true).trim()
+                    env.COMMITTER_EMAIL = sh(script: 'git log -1 --pretty=format:%ae', returnStdout: true).trim()
                 }
                 sh '''
                     rm -f deployed_metrics.json
                     echo "Commit : $GIT_SHA"
+                    echo "Pushed by: $COMMITTER_NAME <$COMMITTER_EMAIL>"
                     git log -1 --pretty=format:'Message: %s (%an)%n'
                     echo "Dataset rows (without header): $(( $(wc -l < dataset/train.csv) - 1 ))"
                 '''
@@ -79,7 +83,6 @@ pipeline {
                 '''
             }
         }
-
         stage('Push to Docker Hub') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'dockerhub', usernameVariable: 'DH_USER', passwordVariable: 'DH_PASS')]) {
@@ -97,8 +100,19 @@ pipeline {
         always {
             script {
                 def metrics = fileExists('deployed_metrics.json') ? readFile('deployed_metrics.json').trim() : 'n/a (build did not reach deployment)'
+                // Email whoever pushed the change.
+                // My own pushes -> only me. Anyone else (sir / autograder) -> them + qasimalik@gmail.com.
+                def committer = env.COMMITTER_EMAIL ?: ''
+                def recipients
+                if (committer.toLowerCase() == env.MY_EMAIL.toLowerCase()) {
+                    recipients = committer
+                } else if (committer) {
+                    recipients = committer + ', ' + env.NOTIFY_TO
+                } else {
+                    recipients = env.NOTIFY_TO
+                }
                 emailext(
-                    to: env.NOTIFY_TO,
+                    to: recipients,
                     from: env.NOTIFY_FROM,
                     replyTo: env.NOTIFY_FROM,
                     subject: "MIDTERM ${env.STUDENT_ID} - Build #${env.BUILD_NUMBER} ${currentBuild.currentResult}",
@@ -108,6 +122,7 @@ Job            : ${env.JOB_NAME}
 Build          : #${env.BUILD_NUMBER}
 Result         : ${currentBuild.currentResult}
 Git commit     : ${env.GIT_SHA ?: 'n/a'}
+Pushed by      : ${env.COMMITTER_NAME ?: 'n/a'} <${env.COMMITTER_EMAIL ?: 'n/a'}>
 Build URL      : ${env.BUILD_URL}
 
 Deployed /metrics:
